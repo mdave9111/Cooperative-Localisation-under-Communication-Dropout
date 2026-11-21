@@ -8,7 +8,9 @@ In multi-agent swarm systems, like autonomous marine vehicles or ground rovers, 
 
 Unanchored agents rely on **cooperative localisation**, measuring range to neighbouring agents and exchanging state estimation packets. However, wireless channels suffer from packet drops, fading and interference.
 
-This project plots the relationship between **packet drop probability (_p_)** against **position estimation error (RMSE)** so baseline estimation strategies can be compared against more complex techniques.
+This project plots the relationship between **packet drop probability (_p_)** against **position estimation error (RMSE)** so baseline state estimation strategies can be compared against more complex techniques.
+
+
 
 
 
