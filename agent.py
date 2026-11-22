@@ -20,6 +20,7 @@ class Agent:
         ## dead reckoning values (where rover thinks it is)
         self.s_lc_dr = 0.0
         self.s_rc_dr = 0.0
+        self.sc_dr = 0.0
         self.x_dr = x
         self.y_dr = y
         self.heading_dr = heading
@@ -40,6 +41,10 @@ class Agent:
         self.x_dr_hist = [x]
         self.y_dr_hist = [y]
 
+        if self.is_anchor:
+            self.P = np.zeros((3, 3))
+        else:
+            self.P = np.diag([0.01, 0.01, 0.01])  # initial [x, y, heading] uncertainty
 
     def noise(self):
         if not self.is_anchor: ## inject noise as this agent doesn't have gps
@@ -54,21 +59,36 @@ class Agent:
             self.s_lc_dr = self.s_lc
             self.s_rc_dr = self.s_rc
 
-
-
-
     def tick(self,theta_l,theta_r,tick):
         if self.t_prev is None: ## makes sure no division by 0 on first go
             self.theta_l = theta_l
             self.theta_r = theta_r
             self.t_prev = tick
             return
-
         dt = tick - self.t_prev
         self.update_prev() #sets the 1 previous values correctly
         self.theta_l = theta_l
         self.theta_r = theta_r
         self.coord_calc()
+        if not self.is_anchor:
+            # Jacobian of compass-heading motion model w.r.t. [x, y, heading]
+            F = np.array([
+                [1.0, 0.0,  self.sc_dr * np.cos(self.heading_dr)],
+                [0.0, 1.0, -self.sc_dr * np.sin(self.heading_dr)],
+                [0.0, 0.0,  1.0]
+            ])
+
+            # Analytical process noise Q from wheel encoder sigma = 0.003
+            sigma_s = 0.003 / np.sqrt(2.0)
+            sigma_theta = (np.sqrt(2.0) * 0.003) / Agent.L
+            G = np.array([
+                [np.sin(self.heading_dr), 0.0],
+                [np.cos(self.heading_dr), 0.0],
+                [0.0,                     1.0]
+            ])
+            Q = G @ np.diag([sigma_s**2, sigma_theta**2]) @ G.T + np.diag([1e-6, 1e-6, 1e-6])
+
+            self.P = F @ self.P @ F.T + Q
         self.w_l = (self.theta_l - self.theta_lprev)/dt
         self.w_r = (self.theta_r - self.theta_rprev)/dt
         self.t_prev = tick
@@ -84,7 +104,6 @@ class Agent:
         self.x_drprev = self.x_dr
         self.y_drprev = self.y_dr
 
-
     def coord_calc(self):
         ## this is the ground truth measurements (actual location)
         dtheta_l = self.theta_l - self.theta_lprev
@@ -94,26 +113,24 @@ class Agent:
         dheading = (self.s_lc - self.s_rc)/Agent.L # delta(heading)
         midheading = self.heading + dheading/2.0
         self.heading += dheading
-        self.sc = 0.5*(self.s_lc + self.s_rc) # midpoitn displacement
+        self.sc = 0.5*(self.s_lc + self.s_rc) # midpoint displacement
         self.xc = self.xcprev + (np.sin(midheading))*self.sc
         self.yc = self.ycprev + (np.cos(midheading))*self.sc
         self.noise() ##injects noise
 
         ## this is the noisy dead reckoning measurements
-
         dheading_dr = (self.s_lc_dr - self.s_rc_dr) / Agent.L
         midheading_dr = self.heading_dr + dheading_dr / 2.0
         self.heading_dr += dheading_dr
-        sc_dr = 0.5 * (self.s_lc_dr + self.s_rc_dr)
-        self.x_dr = self.x_drprev + np.sin(midheading_dr) * sc_dr
-        self.y_dr = self.y_drprev + np.cos(midheading_dr) * sc_dr
+        self.sc_dr = 0.5 * (self.s_lc_dr + self.s_rc_dr)
+        self.x_dr = self.x_drprev + np.sin(midheading_dr) * self.sc_dr
+        self.y_dr = self.y_drprev + np.cos(midheading_dr) * self.sc_dr
 
     def get_coords(self):
         return self.x_dr,self.y_dr,self.is_anchor ## for anchors xdr,ydr = xc,yc
 
     def correct_coords(self,packet): ## This will correct the coordinates of the non anchors
         fixed_gain_update(self,packet)
-
 
     def record_history(self):
         self.x_hist.append(self.xc)

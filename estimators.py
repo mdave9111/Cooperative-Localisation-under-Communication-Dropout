@@ -41,6 +41,45 @@ def fixed_gain_update(agent,packet): #this is hte response that adjusts the rove
     agent.x_dr += (gain*packet.derror)*ux #in brackets is the distance we want to correct along unit vector
     agent.y_dr += (gain*packet.derror)*uy
 
+
+def ekf_update(receiver, packet):
+    if receiver.is_anchor or not packet.valid:
+        return
+
+    sender = packet.sender
+
+    # Predicted range between receiver and sender estimates
+    dx = receiver.x_dr - sender.x_dr
+    dy = receiver.y_dr - sender.y_dr
+    d_hat = np.hypot(dx, dy)
+
+    if d_hat < 1e-6:
+        return
+
+    # Measurement Jacobian H for receiver state [x_dr, y_dr, heading_dr]
+    H = np.array([[dx / d_hat, dy / d_hat, 0.0]])
+
+    # Measurement noise R: sensor noise + sender's own position uncertainty (0 for anchors)
+    sigma_r = getattr(packet, "sigma_range", 0.05)
+    H_sender = np.array([[-dx / d_hat, -dy / d_hat, 0.0]])
+    R = np.array([[sigma_r**2]]) + H_sender @ sender.P @ H_sender.T
+    
+    z = getattr(packet, "d_meas", getattr(packet, "distance", None))
+    innovation = z - d_hat
+
+    # Innovation covariance & Kalman gain
+    S = H @ receiver.P @ H.T + R
+    K = (receiver.P @ H.T) / S[0, 0]  # shape (3, 1)
+
+    # State update [x_dr, y_dr, heading_dr]
+    receiver.x_dr += float(K[0, 0] * innovation)
+    receiver.y_dr += float(K[1, 0] * innovation)
+    if hasattr(receiver, "heading_dr"):
+        receiver.heading_dr += float(K[2, 0] * innovation)
+
+    I = np.eye(3)
+    I_KH = I - K @ H
+    receiver.P = I_KH @ receiver.P @ I_KH.T + (K @ R @ K.T)
         
 
 
