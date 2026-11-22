@@ -24,10 +24,6 @@ This project plots the relationship between **packet drop probability (_p_)** ag
 
 * **Measurements**: Mean Root Mean Square Error (RMSE) across the 4 non-anchor rovers.
 
-## Initial Odometry Simulation
-
-Added a simulation to mimic path trajectories and RMS error for dead reckoning:
-
 
 ## Estimators Compared
 1. **Dead Reckoning (`dr`)**
